@@ -44,8 +44,9 @@ int main() {
 	// Initialize GPIO Button
 	BTN_GPIO_Init();
 	  while(HAL_GPIO_ReadPin(GPIOJ, GPIO_PIN_1) == GPIO_PIN_SET);
+	  wait();
 	  memset(msg, 0, strlen(msg));
-	  sprintf(msg, "\nUse the PWM Mode of the Timer's Output Compare Unit to produce the following PWM Duty Cycles:\n");
+	  sprintf(msg, "\nUse the PWM Mode of the Timer's Output Compare Unit to independently control the\nbrightness of 4 LED's on the following channels:\n");
 	  if(HAL_UART_Transmit(&huart6, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY) != HAL_OK) {
 		Error_Handler();
 	  }
@@ -55,7 +56,7 @@ int main() {
 		Error_Handler();
 	  }
 	  memset(msg, 0, strlen(msg));
-	  sprintf(msg, "\t25%% -> TIM12_Channel2\tLogic_Analyzer D0\n\t40%% -> TIM10_Channel1\tLogic_Analyzer D1\n\t75%% -> TIM11_Channel1\tLogic_Analyzer D2\n\t90%% -> TIM12_Channel1\tLogic_Analyzer D3\n");
+	  sprintf(msg, "\tTIM12_Channel2 -> Logic_Analyzer D0\n\tTIM10_Channel1 -> Logic_Analyzer D1\n\tTIM11_Channel1 -> Logic_Analyzer D2\n\tTIM12_Channel1 -> Logic_Analyzer D3\n");
 	  if(HAL_UART_Transmit(&huart6, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY) != HAL_OK) {
 		Error_Handler();
 	  }
@@ -87,8 +88,8 @@ int main() {
 	  TIM_TypeDef *timerBaseAddr;
 	  uint32_t Channel;
 	  memset(&Timer_Init, 0, sizeof(Timer_Init));
-	  //Timer_Init.Prescaler = 4;
-	  Timer_Init.Prescaler = 4999;
+	  Timer_Init.Prescaler = 4;
+	  //Timer_Init.Prescaler = 4999;
 	  Timer_Init.Period = 10000-1;
 
 	  /*
@@ -97,26 +98,27 @@ int main() {
 	  memset(&sConfig_nonConst, 0, sizeof(sConfig_nonConst));
 	  sConfig_nonConst.OCMode = TIM_OCMODE_PWM1;
 	  sConfig_nonConst.OCPolarity = TIM_OCPOLARITY_HIGH;
+	  sConfig_nonConst.Pulse = 1000;
 
 
 	  for(int i = 0; i < 4; i++){
 		  if(i == 0) {
 			  timerBaseAddr = TIM12;
 			  Channel = TIM_CHANNEL_2;
-			  sConfig_nonConst.Pulse =(Timer_Init.Prescaler*25)/100;
+			  //sConfig_nonConst.Pulse =(Timer_Init.Prescaler*25)/100;
 			  PWM_Config(timerBaseAddr, sConfig_nonConst, Channel, i);
 
 		  }
 		  else if( i == 1 ) {
 			  timerBaseAddr = TIM10;
 			  Channel = TIM_CHANNEL_1;
-			  sConfig_nonConst.Pulse = (Timer_Init.Prescaler*45)/100;
+			  //sConfig_nonConst.Pulse = (Timer_Init.Prescaler*45)/100;
 			  PWM_Config(timerBaseAddr, sConfig_nonConst, Channel, i);
 		  }
 		  else if( i == 2 ) {
 			  timerBaseAddr = TIM11;
 			  Channel = TIM_CHANNEL_1;
-			  sConfig_nonConst.Pulse = (Timer_Init.Prescaler*75)/100;
+			  //sConfig_nonConst.Pulse = (Timer_Init.Prescaler*75)/100;
 			  PWM_Config(timerBaseAddr, sConfig_nonConst, Channel, i);
 		  }
 		  else {
@@ -148,7 +150,60 @@ int main() {
 		  Error_Handler();
 	  }
 
-	  while(1);
+	  uint8_t brightness12_2Delta = 100;
+	  uint8_t brightness10_1Delta = 200;
+	  uint8_t brightness11_1Delta = 300;
+	  uint8_t brightness12_1Delta = 400;
+
+	  uint16_t brightness12_2 = 1000 + brightness12_2Delta;
+	  uint16_t brightness10_1 = 1000 + brightness10_1Delta;
+	  uint16_t brightness11_1 = 1000 + brightness11_1Delta;
+	  uint16_t brightness12_1 = 1000 + brightness12_1Delta;
+
+
+	  while(1) {
+		  while(htim12.Instance->CCR2 < 10000) {
+			  brightness12_2+=brightness12_2Delta;
+			  __HAL_TIM_SET_COMPARE(&htim12, TIM_CHANNEL_2, brightness12_2);
+			  if (brightness10_1+brightness10_1Delta > 10000) {
+				  __HAL_TIM_SET_COMPARE(&htim10, TIM_CHANNEL_1, brightness10_1-=brightness10_1Delta);
+			  }
+			  else
+				  __HAL_TIM_SET_COMPARE(&htim10, TIM_CHANNEL_1, brightness10_1+=brightness10_1Delta);
+			  if (brightness11_1+brightness11_1Delta > 10000) {
+				  __HAL_TIM_SET_COMPARE(&htim11, TIM_CHANNEL_1, brightness11_1-=brightness11_1Delta);
+			  }
+			  else
+				  __HAL_TIM_SET_COMPARE(&htim11, TIM_CHANNEL_1, brightness11_1+=brightness11_1Delta);
+			  if (brightness12_1+brightness12_1Delta > 10000) {
+				  __HAL_TIM_SET_COMPARE(&htim12, TIM_CHANNEL_1, brightness12_1-=brightness12_1Delta);
+			  }
+			  else
+				  __HAL_TIM_SET_COMPARE(&htim12, TIM_CHANNEL_1, brightness12_1+=brightness12_1Delta);
+			  HAL_Delay(1);
+		  }
+		  while(htim12.Instance->CCR2 > 1000) {
+			  brightness12_2-=brightness12_2Delta;
+			  __HAL_TIM_SET_COMPARE(&htim12, TIM_CHANNEL_2, brightness12_2);
+			  if (brightness10_1-brightness10_1Delta < 1000) {
+				  __HAL_TIM_SET_COMPARE(&htim10, TIM_CHANNEL_1, brightness10_1+=brightness10_1Delta);
+			  }
+			  else
+				  __HAL_TIM_SET_COMPARE(&htim10, TIM_CHANNEL_1, brightness10_1-=brightness10_1Delta);
+			  if (brightness11_1-brightness11_1Delta < 1000) {
+				  __HAL_TIM_SET_COMPARE(&htim11, TIM_CHANNEL_1, brightness11_1+=brightness11_1Delta);
+			  }
+			  else
+			  __HAL_TIM_SET_COMPARE(&htim11, TIM_CHANNEL_1, brightness11_1-=brightness11_1Delta);
+			  if (brightness12_1-brightness12_1Delta < 1000) {
+				  __HAL_TIM_SET_COMPARE(&htim12, TIM_CHANNEL_1, brightness12_1+=brightness12_1Delta);
+			  }
+			  else
+			  __HAL_TIM_SET_COMPARE(&htim12, TIM_CHANNEL_1, brightness12_1-=brightness12_1Delta);
+			  HAL_Delay(1);
+		  }
+
+	  }
 
 
 	return 0;
